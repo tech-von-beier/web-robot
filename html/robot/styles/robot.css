@@ -1,0 +1,33 @@
+body wrapper
+{
+    width:90%;
+    margin:auto;
+}
+.viewer{
+    width:800px;
+    height:600px;
+    float:left;
+    margin-right:20px;
+}
+.panel
+{
+    height:270px;
+    padding:10px;
+    margin-bottom:20px;
+    overflow:hidden;
+    border:1px solid #a5b6c8;
+    background:#eef3f7;
+}
+.output
+{
+    height:270px;
+    padding:10px;
+    overflow:scroll;
+    border:1px solid #a5b6c8;
+}
+#m_canvas
+{
+    width:800px;
+    height:600px;
+    border: 1px solid #000000;
+}

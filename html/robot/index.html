@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="utf-8">
+    <title>Gesture Guided Robot Demo</title>
+    <link rel="shortcut icon" href="#"/>
+    <link rel="stylesheet" href="./styles/robot.css">
+    <script src="./js/EventEmitter.js"></script>
+    <script src="./js/roslib.js"></script>
+    <script src="./js/three.js"></script>
+    <script src="./js/OBJLoader.js"></script>
+    <script type="text/javascript" type="text/javascript">
+    var joint1;
+    var joint2;
+    var joint3;
+    var joint5;
+    
+    var ros = new ROSLIB.Ros({
+        url : 'ws://127.0.0.1:9090'
+    });
+    ros.on('connection', function() {
+        console.log('Connected to websocket server.');
+    });
+    ros.on('error', function(error) {
+        console.log('Error connecting to websocket server: ', error);
+    });
+    ros.on('close', function() {
+        console.log('Connection to websocket server closed.');
+    });
+    var listener = new ROSLIB.Topic({
+        ros : ros,
+        name : '/motion',
+        messageType : 'web_robot/Jog'
+    });
+    listener.subscribe(function(message){
+        joint1 = message.q1;
+        joint2 = message.q2;
+        joint3 = message.q3;
+        joint5 = message.q5;
+    });
+</script>
+</head> 
+<body>
+<div class="wrapper">
+    <div class="viewer">
+        <canvas id="m_canvas"></canvas>
+    </div>
+    <!-- A5 not actively selectable -->
+    <div class="panel">
+        <table>
+            <tr>
+                <th>axis</th>
+                <th>&nbsp;angle&nbsp;</th>
+                <th>min</th>
+                <th>control</th>
+                <th>max</th>
+            </tr>
+            <tr>
+                <th>A1:</th>
+                <th><span id="angle1">0.0</span></th>
+                <th>-185.0</th>
+                <th><input type="range" id="axis1" min="-185.0" max="185.0" value="0.0" step="0.1" style="width:250px" autocomplete="off" onchange="getAngle()"></th>
+                <th>+185.0</th>
+            </tr>
+            <tr>
+                <th>A2:</th>
+                <th><span id="angle2">0.0</span></th>
+                <th>-40.0</th>
+                <th><input type="range" id="axis2" min="-40.0" max="110.0" value="0.0" step="0.1" style="width:250px" autocomplete="off" onchange="getAngle()"></th>
+                <th>+110.0</th>
+            </tr>
+            <tr>
+                <th>A3:</th>
+                <th><span id="angle3">0.0</span></th>
+                <th>-90.0</th>
+                <th><input type="range" id="axis3" min="-90.0" max="65.0" value="0.0" step="0.1" style="width:250px" autocomplete="off" onchange="getAngle()"></th>
+                <th>+65.0</th>
+            </tr>
+            <tr>
+                <th>A5:</th>
+                <th><span id="angle5">0.0</span></th>
+                <th>-100.0</th>
+                <th><input type="range" id="axis5" min="-100.0" max="100.0" value="0.0" step="0.1" style="width:250px" autocomplete="off" onchange="getAngle()"></th>
+                <th>+100.0</th>
+            </tr>
+            <tr>
+                <th>A6:</th>
+                <th><span id="angle6">0.0</span></th>
+                <th>-350.0</th>
+                <th><input type="range" id="axis6" min="-350.0" max="350.0" value="0.0" step="0.1" style="width:250px" autocomplete="off" onchange="getAngle()"></th>
+                <th>+350.0</th>
+            </tr>
+        </table> 
+    </div>
+    <div class="output"></div>
+</div>
+<script>
+    var output = document.getElementsByClassName("output")[0];
+
+    var robot = {
+        "BaseFrame" :
+        {
+            "filename" : "./models/KR 300/BaseFrame.obj",
+            "position" : new THREE.Vector3(0.0, 0.0, 0.0),
+            "movable"  : false,
+            "material" : new THREE.MeshPhongMaterial( { color: 0x303030, flatShading: true } ),
+        },
+        "RotatingColumn" :
+        {
+            "filename" : "./models/KR 300/RotatingColumn.obj",
+            "position" : new THREE.Vector3(0.0, 0.0, -555.0),
+            "movable"  : true,
+            "material" : new THREE.MeshPhongMaterial( { color: 0xff5d00, flatShading: true } ),
+            "rotation" : { axis: "z", setpoint: 0.0, feedback: 0.0, min: -185.0, max: 185.0, speed: 97.5 },
+        },
+        "Motor_A1" :
+        {
+            "filename" : "./models/KR 300/Motor_A1.obj",
+            "position" : new THREE.Vector3(0.0, 0.0, -555.0),
+            "movable"  : false,
+            "material" : new THREE.MeshPhongMaterial( { color: 0x303030, flatShading: true } ),
+        },
+        "LinkArm" : 
+        {
+            "filename" : "./models/KR 300/LinkArm.obj",
+            "position" : new THREE.Vector3(-500.0, 0.0, -1045.0),
+            "movable"  : true,
+            "material" : new THREE.MeshPhongMaterial( { color: 0xff5d00, flatShading: true } ),
+            "rotation" : { axis: "y", setpoint: 0.0, feedback: 0.0, min: -40.0, max: 110.0, speed: 91.0  },
+        },
+        "Motor_A2" :
+        {
+            "filename" : "./models/KR 300/Motor_A2.obj",
+            "position" : new THREE.Vector3(0.0, 0.0, -555.0),
+            "movable"  : false,
+            "material" : new THREE.MeshPhongMaterial( { color: 0x303030, flatShading: true } ),
+        },
+        "Arm" : 
+        {
+            "filename" : "./models/KR 300/Arm.obj",
+            "position" : new THREE.Vector3(-500.0, 0.0, -2345.0),
+            "movable"  : true,
+            "material" : new THREE.MeshPhongMaterial( { color: 0xff5d00, flatShading: true } ),
+            "rotation" : { axis: "y", setpoint: 0.0, feedback: 0.0, min: -90.0, max: 65.0, speed: 89.0 },
+        },
+        "Motor_A3" :
+        {
+            "filename" : "./models/KR 300/Motor_A3.obj",
+            "position" : new THREE.Vector3(-500.0, 0.0, -2345.0),
+            "movable"  : false,
+            "material" : new THREE.MeshPhongMaterial( { color: 0x303030, flatShading: true } ),
+        },
+        "Wrist" : 
+        {
+            "filename" : "./models/KR 300/Wrist.obj",
+            "position" : new THREE.Vector3(-1550.0, 0.0, -2345.0),
+            "movable"  : true,
+            "material" : new THREE.MeshPhongMaterial( { color: 0xff5d00, flatShading: true } ),
+            "rotation" : { axis: "y", setpoint: 0.0, feedback: 0.0, min: -180.0, max: 180.0, speed: 90.0 },
+        },
+        "Motor_A5" :
+        {
+            "filename" : "./models/KR 300/Motor_A5.obj",
+            "position" : new THREE.Vector3(-1550.0, 0.0, -2345.0),
+            "movable"  : false,
+            "material" : new THREE.MeshPhongMaterial( { color: 0x303030, flatShading: true } ),
+        },
+        "EndEffector" : 
+        {
+            "filename" : "./models/KR 300/EndEffector.obj",
+            "position" : new THREE.Vector3(-1850.0, 0.0, -2145.0),
+            "movable"  : true,
+            "material" : new THREE.MeshPhongMaterial( { color: 0x202020, flatShading: true } ),
+            "rotation" : { axis: "z", setpoint: 0.0, feedback: 0.0, min: -350.0, max: 350.0, speed: 177.0 },
+        },
+        "Motor_A6" :
+        {
+            "filename" : "./models/KR 300/Motor_A6.obj",
+            "position" : new THREE.Vector3(-1550.0, 0.0, -2345.0),
+            "movable"  : false,
+            "material" : new THREE.MeshPhongMaterial( { color: 0x303030, flatShading: true } ),
+        },
+    };
+    var modelLoaded = false;
+    
+    var scene = null;
+    var camera = null;
+    
+    var clock = null;
+    var renderer = null;
+
+    init();    
+    render();
+    
+    function init() {
+        // scene
+        scene = new THREE.Scene();
+        
+        // add light source
+        var ambientLight = new THREE.AmbientLight(0xcccccc, 0.4);
+        scene.add(ambientLight);
+        var pointLight = new THREE.PointLight(0xffffff, 0.8);
+        
+        // camera
+        camera = new THREE.PerspectiveCamera(45, 4 / 3, 0.1, 10000);
+        camera.position.set(0, 300, 800);
+        camera.lookAt(new THREE.Vector3(0, 100, 0));
+        camera.add(pointLight);
+        scene.add(camera);
+        
+        // load model
+        var loader = new THREE.OBJLoader(); 
+        var loadingNum = 11;
+        var scale = new THREE.Vector3(0.1, 0.1, 0.1);
+        var offset = new THREE.Vector3();
+        
+        output.innerHTML += "model loading ... <br>";
+        for (component in robot) {
+            loadModel(robot[component], scale);
+        }
+                
+        function loadModel(component, scale) {
+            loader.load(component.filename, function (obj) {
+                component.obj = obj;
+                component.obj.traverse(function (child) {
+                    if (child.isMesh) {
+                        console.log("Mesh: " + child.name + " adjusting position: " + component.position.toArray());
+                        child.geometry.translate(component.position.x, component.position.y, component.position.z);
+                        child.material = component.material;
+                    }
+                });
+                component.position.multiply(scale);
+                component.position.negate();
+                component.obj.scale.copy(scale);
+                              
+                loadingNum--;
+                if (loadingNum == 0) {
+                	output.innerHTML += "all components loaded<br>";
+                    assembly();
+                }
+            });
+        }
+
+        function assembly() {
+            robot["EndEffector"].group = new THREE.Group();
+            robot["Wrist"].group = new THREE.Group();
+            robot["Arm"].group = new THREE.Group();
+            robot["LinkArm"].group = new THREE.Group();
+            robot["RotatingColumn"].group = new THREE.Group();
+            robot["BaseFrame"].group = new THREE.Group();
+            
+            // End Effector
+            robot["EndEffector"].group.add(robot["EndEffector"].obj);
+            offset.copy(robot["Wrist"].position);
+            fixGroupPivot(robot["EndEffector"], offset);
+            
+            // Wrist
+            robot["Wrist"].group.add(robot["Wrist"].obj);
+            robot["Wrist"].group.add(robot["Motor_A6"].obj);
+            robot["Wrist"].group.add(robot["Motor_A5"].obj);
+            offset.copy(robot["Arm"].position)
+            fixGroupPivot(robot["Wrist"], offset);
+            robot["Wrist"].group.add(robot["EndEffector"].group);
+            
+            // Arm
+            robot["Arm"].group.add(robot["Arm"].obj);
+            robot["Arm"].group.add(robot["Motor_A3"].obj);
+            offset.copy(robot["LinkArm"].position)
+            fixGroupPivot(robot["Arm"], offset);
+            robot["Arm"].group.add(robot["Wrist"].group);
+            
+            // Link Arm
+            robot["LinkArm"].group.add(robot["LinkArm"].obj);
+            offset.copy(robot["RotatingColumn"].position)
+            fixGroupPivot(robot["LinkArm"], offset);
+            robot["LinkArm"].group.add(robot["Arm"].group);
+            
+            // Rotating Column
+            robot["RotatingColumn"].group.add(robot["RotatingColumn"].obj);
+            robot["RotatingColumn"].group.add(robot["Motor_A1"].obj);
+            robot["RotatingColumn"].group.add(robot["Motor_A2"].obj);
+            fixGroupPivot(robot["RotatingColumn"], new THREE.Vector3());
+            robot["RotatingColumn"].group.add(robot["LinkArm"].group);
+            
+            // Base Frame
+            robot["BaseFrame"].group.add(robot["BaseFrame"].obj);
+            robot["BaseFrame"].group.add(robot["RotatingColumn"].group);
+            
+            // upright the robot
+            robot["BaseFrame"].group.rotation.set( -Math.PI / 2, 0, 0 );
+            
+            scene.add(robot["BaseFrame"].group);
+            modelLoaded = true;
+        }
+        
+        function fixGroupPivot(component, offset) {
+            var p = new THREE.Vector3();
+            p.copy(component.position);
+            p.add(offset.negate());
+            component.group.position.copy(p);
+        }
+        
+        // clock
+        clock = new THREE.Clock();
+        
+        // renderer
+        renderer = new THREE.WebGLRenderer({
+            canvas: document.getElementById('m_canvas'),
+            antialias:true
+        });
+        renderer.setSize(800, 600);
+        renderer.setClearColor(0x777777);
+    }
+    function render() {
+        if (modelLoaded == true) {
+            if (joint1 == 1){
+                document.getElementById("axis1").value -= -1;
+            }
+            else if (joint1 == -1){
+                document.getElementById("axis1").value -= 1;
+            }
+            if (joint2 == 1){
+                document.getElementById("axis2").value -= -1;
+            }
+            else if (joint2 == -1){
+                document.getElementById("axis2").value -= 1;
+            }
+            if (joint3 == 1){
+                document.getElementById("axis3").value -= -1;
+            }
+            else if (joint3 == -1){
+                document.getElementById("axis3").value -= 1;
+            }
+            if (joint5 == 1){
+                document.getElementById("axis5").value -= -1;
+            }
+            else if (joint5 == -1){
+                document.getElementById("axis5").value -= 1;
+            }
+            
+            robot["RotatingColumn"].rotation.setpoint = THREE.Math.clamp(document.getElementById("axis1").value, robot["RotatingColumn"].rotation.min, robot["RotatingColumn"].rotation.max);
+            robot["LinkArm"].rotation.setpoint = THREE.Math.clamp(document.getElementById("axis2").value, robot["LinkArm"].rotation.min, robot["LinkArm"].rotation.max);
+            robot["Arm"].rotation.setpoint = THREE.Math.clamp(document.getElementById("axis3").value, robot["Arm"].rotation.min, robot["Arm"].rotation.max);
+            robot["Wrist"].rotation.setpoint = THREE.Math.clamp(document.getElementById("axis5").value, robot["Wrist"].rotation.min, robot["Wrist"].rotation.max);
+            robot["EndEffector"].rotation.setpoint = THREE.Math.clamp(document.getElementById("axis6").value, robot["EndEffector"].rotation.min, robot["EndEffector"].rotation.max);
+            
+            actionRobot();
+        }
+        
+        renderer.render(scene, camera);
+        requestAnimationFrame(render);
+        
+        function actionRobot() {
+            var deltaTime = clock.getDelta();
+            var deltaAngle = 0.0;
+            var deltaDeg = 0.0;
+            var stepDeg = 0.0;
+            
+            for (component in robot) {
+                if (robot[component].movable) {
+                    stepDeg = robot[component].rotation.speed * deltaTime;
+                    
+                    robot[component].rotation.setpoint = THREE.Math.clamp(robot[component].rotation.setpoint, robot[component].rotation.min, robot[component].rotation.max);
+                    deltaAngle = robot[component].rotation.setpoint - robot[component].rotation.feedback;
+                    
+                    if (deltaAngle > 0.0)
+                    {
+                        if (deltaAngle > stepDeg) {
+                            deltaDeg = stepDeg;
+                        }
+                        else{
+                            delatDeg = deltaAngle;
+                        }
+                    }
+                    else {
+                        if (deltaAngle < -stepDeg) {
+                            deltaDeg = -stepDeg;
+                        }
+                        else{
+                            deltaDeg = deltaAngle;
+                        }
+                    }
+                                               
+                    if (!(Math.abs(deltaDeg) < Number.EPSILON)) {
+                      if (robot[component].rotation.axis == "x") {
+                          robot[component].group.rotateX(THREE.Math.degToRad(deltaDeg));
+                      } else if (robot[component].rotation.axis == "y") {
+                          robot[component].group.rotateY(THREE.Math.degToRad(deltaDeg));
+                      } else if (robot[component].rotation.axis == "z") {
+                          robot[component].group.rotateZ(THREE.Math.degToRad(deltaDeg));
+                      }
+                      robot[component].rotation.feedback += deltaDeg;
+                    }
+                }
+            }
+        }
+    }
+    
+    function getAngle() {
+        angle1 = document.getElementById("axis1").value;
+        document.getElementById("angle1").innerText = angle1;
+        angle2 = document.getElementById("axis2").value;
+        document.getElementById("angle2").innerText = angle2;
+        angle3 = document.getElementById("axis3").value;
+        document.getElementById("angle3").innerText = angle3;
+        angle5 = document.getElementById("axis5").value;
+        document.getElementById("angle5").innerText = angle5;
+        angle6 = document.getElementById("axis6").value;
+        document.getElementById("angle6").innerText = angle6;
+    }
+</script>
+</body>
+</html>
